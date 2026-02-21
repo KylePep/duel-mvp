@@ -33,6 +33,7 @@ function handleMessage(socket, msg) {
         code,
         players: [socket],
         state: {
+          phase: "WAITING",
           currentTurn: 0,
           hp: [10, 10],
         }
@@ -40,6 +41,12 @@ function handleMessage(socket, msg) {
 
       socket.roomCode = code;
       socket.send(JSON.stringify({ type: "DUEL_CREATED", code }));
+      socket.send(
+        JSON.stringify({
+          type: "PHASE_UPDATE",
+          phase: "WAITING",
+        })
+      );
       break;
     }
 
@@ -54,11 +61,39 @@ function handleMessage(socket, msg) {
       socket.roomCode = msg.code;
 
       room.state.currentTurn = Math.floor(Math.random() * 2);
+      room.state.phase = "TURN_START";
 
-      room.players.forEach((p, i) => p.send(JSON.stringify({
-        type: "TURN_START",
-        yourTurn: room.state.currentTurn === i
-      })));
+      // Notify both players duel has started
+      room.players.forEach((p, i) =>
+        p.send(
+          JSON.stringify({
+            type: "DUEL_STARTED",
+            yourIndex: i,
+            phase: room.state.phase,
+          })
+        ));
+
+      // Announce first turn
+      room.players.forEach((p, i) =>
+        p.send(
+          JSON.stringify({
+            type: "TURN_START",
+            yourTurn: room.state.currentTurn === i,
+          })
+        )
+      );
+
+      // Move to action phase
+      room.state.phase = "AWAIT_ACTION";
+      room.players.forEach((p) =>
+        p.send(
+          JSON.stringify({
+            type: "PHASE_UPDATE",
+            phase: "AWAIT_ACTION",
+          })
+        )
+      );
+
       break;
     }
 
@@ -66,13 +101,18 @@ function handleMessage(socket, msg) {
       const room = rooms.get(socket.roomCode);
       if (!room) return;
 
+      if (room.state.phase !== "AWAIT_ACTION") return;
+
       const idx = room.players.indexOf(socket);
       if (idx !== room.state.currentTurn) return;
+
+      room.state.phase = "RESOLVE";
 
       const opponent = 1 - idx;
       room.state.hp[opponent] -= Math.floor(Math.random() * 3) + 1;
       ;
 
+      //Reduce opponents hp by damage value
       room.players.forEach((p, i) =>
         p.send(
           JSON.stringify({
@@ -82,7 +122,24 @@ function handleMessage(socket, msg) {
         )
       );
 
+      // Check win
+      if (room.state.hp[opponent] <= 0) {
+        room.state.phase = "GAME_OVER";
+        room.players.forEach((p, i) =>
+          p.send(
+            JSON.stringify({
+              type: "GAME_OVER",
+              winner: idx,
+              youWon: i === idx,
+            })
+          )
+        );
+        return;
+      }
+
+      // Swap turn
       room.state.currentTurn = opponent;
+      room.state.phase = "TURN_START";
 
       room.players.forEach((p, i) =>
         p.send(
@@ -92,6 +149,17 @@ function handleMessage(socket, msg) {
           })
         )
       );
+
+      room.state.phase = "AWAIT_ACTION";
+      room.players.forEach((p) =>
+        p.send(
+          JSON.stringify({
+            type: "PHASE_UPDATE",
+            phase: "AWAIT_ACTION",
+          })
+        )
+      );
+
       break;
     }
   }
