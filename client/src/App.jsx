@@ -8,6 +8,9 @@ export default function App() {
   const [duelCode, setDuelCode] = useState(null);
   const [phase, setPhase] = useState("WAITING");
   const [yourIndex, setYourIndex] = useState(null);
+  const [status, setStatus] = useState("");
+  const [log, setLog] = useState([]);
+  const [rooms, setRooms] = useState([]);
 
   useEffect(() => {
     connect();
@@ -27,6 +30,8 @@ export default function App() {
         case "DUEL_STARTED":
           setYourIndex(msg.yourIndex);
           setPhase(msg.phase);
+          setRooms([]);
+          setLog([]);
           break;
 
         case "PHASE_UPDATE":
@@ -35,10 +40,21 @@ export default function App() {
 
         case "TURN_START":
           setYourTurn(msg.yourTurn);
+          setStatus("");
           break;
 
+        case "ACTION_SELECTED":
+          setPhase(msg.phase);
+          setStatus(msg.waitingFor);
+          break;
+          
         case "RESOLVE":
           setHp(msg.hp);
+          if (msg.damage > 0){
+            setLog(prevLogs => [`${prevLogs.length + 1} - ${msg.actorIndex == msg.yourIndex ? "Your" : "Opponent's"} ${msg.action.type} was successful (${msg.damage} damage dealt)`, ...prevLogs ]);
+          } else {
+            setLog(prevLogs => [`${prevLogs.length + 1} - ${msg.actorIndex == msg.yourIndex ? "Opponent's" : "Your"} ${msg.reaction.type} prevented ${msg.actorIndex == msg.yourIndex ? "Your" : "Opponent's"} ${msg.action.type} (${msg.damage} damage dealt)`, ...prevLogs ]);
+          }
           break;
 
         case "GAME_OVER":
@@ -48,6 +64,9 @@ export default function App() {
           setDuelCode(null);
           setHp([10,10])
           break;
+
+        case "DUEL_LIST":
+          setRooms(msg.rooms);
       }
     });
 
@@ -58,6 +77,7 @@ export default function App() {
     yourIndex !== null ? 1 - yourIndex : null;
 
   return (
+    <>
     <div style={{ padding: 20, maxWidth: 400 }}>
       <h1>Duel MVP</h1>
 
@@ -75,8 +95,12 @@ export default function App() {
                 code: prompt("Enter duel code"),
               })
             }
-          >
+            >
             Join Duel
+          </button>
+          <button
+            onClick={() => send({type: "SEARCH_DUEL"})}>
+            Search Duel
           </button>
         </>
       )}
@@ -93,11 +117,37 @@ export default function App() {
         </p>
       )}
 
+<div>
+      {rooms.length > 0 && (
+        <>
+        <p>Available Duels:</p> 
+        {rooms.map((room, index) => (
+        <div key={index} style={{display: "flex", gap:"32px"} }>
+          <p >{room}</p> <button
+            onClick={() =>
+              send({
+                type: "JOIN_DUEL",
+                code: room,
+              })
+            }
+            >JOIN</button>
+        </div>
+      ))} 
+      </>
+      )
+    }
+    </div>
+
       <hr />
 
       <p>
         <strong>Phase:</strong> {phase}
       </p>
+      {status && (
+        <p>
+          <em>{status}</em>
+        </p>
+      )}
 
       {yourIndex != null &&(
         <p>
@@ -119,14 +169,57 @@ export default function App() {
         </>
       )}
 
+    {phase === "AWAIT_REACTION" && !yourTurn && (
+      <>
+        <p>Choose your reaction:</p>
+        <button onClick={() => send({ type: "REACTION", reaction: "DODGE" })}>
+          DODGE
+        </button>
+        <button onClick={() => send({ type: "REACTION", reaction: "PARRY" })}>
+          PARRY
+        </button>
+        <button onClick={() => send({ type: "REACTION", reaction: "BLOCK" })}>
+          Block
+        </button>
+      </>
+    )}
+
+    {phase === "AWAIT_ACTION" && yourTurn && (
+      <>
+    <button
+    onClick={() => send({ type: "ACTION", action: "SLASH" })}
+    disabled={
+          !yourTurn || phase !== "AWAIT_ACTION"
+        }
+        >
+        SLASH
+      </button>
       <button
-        onClick={() => send({ type: "ATTACK" })}
+        onClick={() => send({ type: "ACTION", action: "STAB" })}
         disabled={
           !yourTurn || phase !== "AWAIT_ACTION"
         }
-      >
-        Attack
+        >
+        STAB
       </button>
+      <button
+        onClick={() => send({ type: "ACTION", action: "STRIKE" })}
+        disabled={
+          !yourTurn || phase !== "AWAIT_ACTION"
+        }
+        >
+        STRIKE
+      </button>
+          </>
+      )}
+
     </div>
+    <div>
+      {log.length >0 && <p>LOG:</p> }
+      {log.map((logItem, index) => (
+        <p key={index}>{logItem}</p>
+      ))}
+    </div>
+      </>
   );
 }

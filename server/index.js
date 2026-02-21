@@ -1,5 +1,7 @@
 import { WebSocketServer } from "ws";
 import crypto from "crypto";
+import { resolve } from "path";
+import { type } from "os";
 
 const wss = new WebSocketServer({ port: 8080 });
 const rooms = new Map();
@@ -36,6 +38,10 @@ function handleMessage(socket, msg) {
           phase: "WAITING",
           currentTurn: 0,
           hp: [10, 10],
+          turn: {
+            action: null,
+            reaction: null
+          }
         }
       });
 
@@ -97,73 +103,137 @@ function handleMessage(socket, msg) {
       break;
     }
 
-    case "ATTACK": {
+    case "SEARCH_DUEL": {
+      const openRooms = [...rooms.entries()]
+        .filter(([_, room]) => room.players.length == 1) //joinable
+        .map(([code]) => code);
+
+      socket.send(JSON.stringify({
+        type: "DUEL_LIST",
+        rooms: openRooms
+      }));
+      break;
+    }
+
+    case "ACTION": {
       const room = rooms.get(socket.roomCode);
       if (!room) return;
 
       if (room.state.phase !== "AWAIT_ACTION") return;
 
+      const attacker = room.state.currentTurn;
       const idx = room.players.indexOf(socket);
-      if (idx !== room.state.currentTurn) return;
+      if (idx !== attacker) return;
 
-      room.state.phase = "RESOLVE";
-
-      const opponent = 1 - idx;
-      room.state.hp[opponent] -= Math.floor(Math.random() * 3) + 1;
-      ;
+      // room.state.phase = "RESOLVE";
+      room.state.turn.action = { type: msg.action };
+      room.state.phase = "AWAIT_REACTION";
 
       //Reduce opponents hp by damage value
       room.players.forEach((p, i) =>
         p.send(
           JSON.stringify({
-            type: "RESOLVE",
-            hp: room.state.hp,
-          })
-        )
-      );
-
-      // Check win
-      if (room.state.hp[opponent] <= 0) {
-        room.state.phase = "GAME_OVER";
-        room.players.forEach((p, i) =>
-          p.send(
-            JSON.stringify({
-              type: "GAME_OVER",
-              winner: idx,
-              youWon: i === idx,
-            })
-          )
-        );
-        return;
-      }
-
-      // Swap turn
-      room.state.currentTurn = opponent;
-      room.state.phase = "TURN_START";
-
-      room.players.forEach((p, i) =>
-        p.send(
-          JSON.stringify({
-            type: "TURN_START",
-            yourTurn: room.state.currentTurn === i,
-          })
-        )
-      );
-
-      room.state.phase = "AWAIT_ACTION";
-      room.players.forEach((p) =>
-        p.send(
-          JSON.stringify({
-            type: "PHASE_UPDATE",
-            phase: "AWAIT_ACTION",
+            type: "ACTION_SELECTED",
+            waitingFor:
+              i === attacker ? "Opponent reaction" : "Your Action",
+            phase: room.state.phase,
           })
         )
       );
 
       break;
     }
+
+    case "REACTION": {
+      const room = rooms.get(socket.roomCode);
+      if (!room) return;
+      if (room.state.phase != "AWAIT_REACTION") return;
+
+      const defender = 1 - room.state.currentTurn;
+      const idx = room.players.indexOf(socket);
+      if (idx != defender) return;
+
+      room.state.turn.reaction = { type: msg.reaction };
+
+      room.state.phase = "RESOLVE";
+      resolveTurn(room);
+      break;
+    }
   }
 }
+
+function resolveTurn(room) {
+  const attacker = room.state.currentTurn;
+  const defender = 1 - attacker;
+
+  // let damage = Math.floor(Math.random() * 3) + 1;
+  let damage = 2;
+
+  let actionType = room.state.turn.action.type;
+  let reactionType = room.state.turn.reaction.type;
+
+  if (actionType == "SLASH" && reactionType == "DODGE") damage = 0;
+  if (actionType == "STAB" && reactionType == "PARRY") damage = 0;
+  if (actionType == "STRIKE" && reactionType == "BLOCK") damage = 0;
+
+
+  room.state.hp[defender] -= damage;
+
+  room.players.forEach((p, i) =>
+    p.send(
+      JSON.stringify({
+        type: "RESOLVE",
+        damage,
+        hp: room.state.hp,
+        action: room.state.turn.action,
+        reaction: room.state.turn.reaction,
+        actorIndex: room.state.currentTurn,
+        yourIndex: i,
+      })
+    )
+  );
+
+  room.state.turn.action = null;
+  room.state.turn.reaction = null;
+
+  // Game over?
+  if (room.state.hp[defender] <= 0) {
+    room.state.phase = "GAME_OVER";
+    room.players.forEach((p, i) =>
+      p.send(
+        JSON.stringify({
+          type: "GAME_OVER",
+          youWon: i === attacker,
+        })
+      )
+    );
+    return;
+  }
+
+  // Next turn
+  room.state.currentTurn = defender;
+  room.state.phase = "TURN_START";
+
+  room.players.forEach((p, i) =>
+    p.send(
+      JSON.stringify({
+        type: "TURN_START",
+        yourTurn: room.state.currentTurn === i,
+      })
+    )
+  );
+
+  room.state.phase = "AWAIT_ACTION";
+  room.players.forEach((p) =>
+    p.send(
+      JSON.stringify({
+        type: "PHASE_UPDATE",
+        phase: "AWAIT_ACTION",
+      })
+    )
+  );
+}
+
 
 function handleDisconnect(socket) {
   console.log("Disconnected:", socket.id);
