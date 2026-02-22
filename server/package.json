@@ -1,5 +1,5 @@
 {
-  "name": "server",
+  "name": "duel-mvp-server",
   "version": "1.0.0",
   "main": "index.js",
   "private": true,
@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "express": "^4.18.2",
     "ws": "^8.19.0"
   }
 }

@@ -20,7 +20,6 @@ app.get("*", (_, res) => {
   res.sendFile(path.join(__dirname, "../client/dist/index.html"));
 });
 
-const wss = new WebSocketServer({ port: 8080 });
 const rooms = new Map();
 
 console.log("WebSocket server running on ws://localhost:8080");
