@@ -54,6 +54,7 @@ function handleMessage(socket, msg) {
           phase: "WAITING",
           currentTurn: 0,
           hp: [10, 10],
+          disabledActions: [[], []],
           turn: {
             action: null,
             reaction: null
@@ -151,7 +152,7 @@ function handleMessage(socket, msg) {
           JSON.stringify({
             type: "ACTION_SELECTED",
             waitingFor:
-              i === attacker ? "Opponent reaction" : "Your Action",
+              i === attacker ? "Waiting for opponent's reaction..." : "React to your opponents action...",
             phase: room.state.phase,
           })
         )
@@ -182,31 +183,44 @@ function resolveTurn(room) {
   const attacker = room.state.currentTurn;
   const defender = 1 - attacker;
 
-  let damage = 2;
-
   let actionType = room.state.turn.action.type;
   let reactionType = room.state.turn.reaction.type;
 
-  if (actionType == "SLASH" && reactionType == "DODGE") damage = 0;
-  if (actionType == "STAB" && reactionType == "PARRY") damage = 0;
-  if (actionType == "STRIKE" && reactionType == "BLOCK") damage = 0;
+  const { attackerDamage, defenderDamage, disableAction, resolutionType } = handleActionsResolution(actionType, reactionType, room.state.disabledActions);
+
+  // Apply damage
+  room.state.hp[attacker] -= attackerDamage;
+  room.state.hp[defender] -= defenderDamage;
+
+  // At the end of resolveTurn
+  room.state.disabledActions.forEach((arr) => {
+    arr.shift(); // remove the first item each turn
+  });
+
+  // Apply disabling effect if any
+  if (disableAction) {
+    room.state.disabledActions[attacker].push(disableAction);
+    room.state.disabledActions[attacker].push(disableAction);
+  }
 
 
-  room.state.hp[defender] -= damage;
 
+  // Send resolve info to players
   room.players.forEach((p, i) =>
     p.send(
       JSON.stringify({
         type: "RESOLVE",
-        damage,
         hp: room.state.hp,
         action: room.state.turn.action,
         reaction: room.state.turn.reaction,
-        actorIndex: room.state.currentTurn,
+        actorIndex: attacker,
         yourIndex: i,
+        attackerDamage,
+        defenderDamage,
+        disabledActions: room.state.disabledActions,
+        resolutionType: resolutionType, // tells frontend if win, lose, draw, defend or disable
       })
-    )
-  );
+    ));
 
   room.state.turn.action = null;
   room.state.turn.reaction = null;
@@ -246,6 +260,74 @@ function resolveTurn(room) {
         phase: "AWAIT_ACTION",
       })
     )
+  );
+}
+
+function handleActionsResolution(action, reaction, attackerDisabled) {
+  let attackerDamage = 0;
+  let defenderDamage = 0;
+  let disableAction = null;
+  let resolutionType = null;
+
+  const attacks = ["SLASH", "STAB", "STRIKE"];
+  const defense = ["DODGE", "PARRY", "BLOCK"];
+
+  if (attacks.includes(reaction)) {
+    // RPS logic
+    const outcome = rpsOutcome(reaction, action); // returns 'win' | 'lose' | 'draw'
+    resolutionType = outcome;
+    switch (outcome) {
+      case "win":
+        attackerDamage = 0;
+        defenderDamage = 3;
+        break;
+      case "lose":
+        attackerDamage = 2;
+        defenderDamage = 0;
+        break;
+      case "draw":
+        attackerDamage = 1;
+        defenderDamage = 2;
+        break;
+    }
+  } else if (defense.includes(reaction)) {
+    // Defensive logic
+    if (guessCorrect(reaction, action)) {
+      //Correct guess disables attack for next turn
+      attackerDamage = 0;
+      defenderDamage = 0;
+      disableAction = action;
+      resolutionType = "disable"
+    } else {
+      // Failed defensive guess
+      attackerDamage = 0;
+      defenderDamage = 1;
+      resolutionType = "defend"
+    }
+  }
+  return { attackerDamage, defenderDamage, disableAction, resolutionType }
+}
+
+// Rock-paper-scissors outcome helper
+function rpsOutcome(reaction, action) {
+  if (reaction === action) return "draw";
+  if (
+    (action === "SLASH" && reaction === "STAB") ||
+    (action === "STAB" && reaction === "STRIKE") ||
+    (action === "STRIKE" && reaction === "SLASH")
+  ) {
+    return "win";
+  }
+  return "lose";
+}
+
+// Map defensive reaction to correct guess
+function guessCorrect(defense, attack) {
+  // Simple mapping: DODGE avoids SLASH, PARRY avoids STAB, BLOCK avoids STRIKE
+  return (
+    (defense === "DODGE" && attack === "SLASH") ||
+    (defense === "PARRY" && attack === "STAB") ||
+    (defense === "BLOCK" && attack === "STRIKE")
   );
 }
 
