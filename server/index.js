@@ -1,7 +1,24 @@
+import express from "express";
 import { WebSocketServer } from "ws";
+import path from "path";
+import { fileURLToPath } from "url";
 import crypto from "crypto";
 import { resolve } from "path";
 import { type } from "os";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const server = app.listen(process.env.PORT || 3000);
+
+const wss = new WebSocketServer({ server });
+
+app.use(express.static(path.join(__dirname, "../client/dist")));
+
+app.get("*", (_, res) => {
+  res.sendFile(path.join(__dirname, "../client/dist/index.html"));
+});
 
 const wss = new WebSocketServer({ port: 8080 });
 const rooms = new Map();
@@ -166,7 +183,6 @@ function resolveTurn(room) {
   const attacker = room.state.currentTurn;
   const defender = 1 - attacker;
 
-  // let damage = Math.floor(Math.random() * 3) + 1;
   let damage = 2;
 
   let actionType = room.state.turn.action.type;
