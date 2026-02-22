@@ -5,7 +5,7 @@ const listeners = new Set<(msg: any) => void>();
 export function connect() {
   if (socket || isConnecting) return;
   isConnecting = true;
-  socket = new WebSocket("ws://localhost:3000");
+  socket = new WebSocket("wss://duel-mvp.onrender.com");
 
   socket.onopen = () => {
     isConnecting = false;
