@@ -71,7 +71,7 @@ export default function App() {
       }
     });
 
-    return unsub;
+    return () => { unsub(); }; // ensure return is void
   }, []);
 
   return (

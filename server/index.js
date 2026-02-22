@@ -22,7 +22,7 @@ app.get("*", (_, res) => {
 
 const rooms = new Map();
 
-console.log("WebSocket server running on ws://localhost:8080");
+console.log("WebSocket server running on ws://localhost:3000");
 
 wss.on("connection", (socket) => {
   socket.id = crypto.randomUUID();
