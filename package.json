@@ -1,0 +1,8 @@
+{
+  "name": "duel-mvp",
+  "private": true,
+  "scripts": {
+    "build": "npm install --prefix server && npm install --prefix client && npm run build --prefix client",
+    "start": "node server/index.js"
+  }
+}
