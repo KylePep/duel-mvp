@@ -5,11 +5,17 @@ const listeners = new Set<(msg: any) => void>();
 export function connect() {
   if (socket || isConnecting) return;
   isConnecting = true;
-  socket = new WebSocket("wss://duel-mvp.onrender.com");
+  // Determine the URL based on environment
+  const url =
+  window.location.hostname === "localhost"
+    ? "ws://localhost:3000"
+    : "wss://duel-mvp.onrender.com";
+    
+  socket = new WebSocket(url);
 
   socket.onopen = () => {
     isConnecting = false;
-    console.log("Connected");
+    console.log("Connected to", url);
     socket?.send(JSON.stringify({ type: "CONNECT" }));
   };
 
