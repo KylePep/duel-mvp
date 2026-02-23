@@ -225,11 +225,14 @@ export default function App() {
           break;
 
         case "GAME_OVER":
-          alert(msg.youWon ? "You win!" : "You lose!");
           setPhase("WAITING");
           setYourIndex(null);
           setDuelCode(null);
           setHp([10, 10])
+          setLog(prevLogs => [
+            { textParts: ["game over, ", msg.youWon ? "You win!" : "You lost."] },
+            ...prevLogs]);
+          setShowModal(true);
           break;
 
         case "DUEL_LIST":
@@ -293,7 +296,6 @@ export default function App() {
 
         {connected && phase != "WAITING" && (
           <p>
-            {/* <strong>In a battle</strong> */}
             <strong>PLAYER {yourIndex != null ? yourIndex + 1 : 0}</strong>
           </p>
         )}
@@ -378,7 +380,7 @@ export default function App() {
           </>
         )}
 
-        {status && (
+        {status && phase != "WAITING" && (
           <p>
             <em>{status}</em>
           </p>
@@ -503,7 +505,7 @@ export default function App() {
           {log.length > 0 && <p>Turn history:</p>}
           {log.map((entry, index) => (
             <div key={index} style={{ display: "flex", alignItems: "start", gap: "4px", marginBottom: " 4px" }}>
-              <span>{index}- </span> <RenderLog entry={entry} />
+              <span>{log.length - index}- </span> <RenderLog entry={entry} />
             </div>
           ))}
         </div>
@@ -511,7 +513,7 @@ export default function App() {
         <Modal
           open={showModal}
           onClose={() => setShowModal(false)}
-          autoCloseMs={2500}
+          autoCloseMs={5000}
         >
           <h3>Turn Resolved</h3>
           <RenderLog entry={log[0]} />

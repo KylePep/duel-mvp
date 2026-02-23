@@ -239,6 +239,20 @@ function resolveTurn(room) {
     return;
   }
 
+  // Game over?
+  if (room.state.hp[attacker] <= 0) {
+    room.state.phase = "GAME_OVER";
+    room.players.forEach((p, i) =>
+      p.send(
+        JSON.stringify({
+          type: "GAME_OVER",
+          youWon: i === defender,
+        })
+      )
+    );
+    return;
+  }
+
   // Next turn
   room.state.currentTurn = defender;
   room.state.phase = "TURN_START";
