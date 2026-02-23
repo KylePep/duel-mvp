@@ -1,6 +1,34 @@
-/* #root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
-} */
+.action-triangle {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+  place-items: center;
+}
+
+
+.action-triangle span {
+  font-weight: bold;
+  font-size: 2em;
+  line-height: 32px;
+}
+
+.icon {
+  width: 32px;
+  height: 32px;
+}
+
+.icon--disabled {
+  opacity: 0.35;
+  filter: grayscale(100%);
+}
+
+.icon--stand-by {
+  opacity: 0.5;
+  filter: invert();
+}
+
+.small-icon {
+  width: 16px;
+  height: 16px;
+}

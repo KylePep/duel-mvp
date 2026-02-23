@@ -1,6 +1,14 @@
 import { useEffect, useState } from "react";
 import { connect, send, subscribe } from "./ws";
 
+import './App.css';
+import slashImg from "./assets/duel-slash.png";
+import stabImg from "./assets/duel-stab.png";
+import strikeImg from "./assets/duel-strike.png";
+import dodgeImg from "./assets/duel-dodge.png";
+import parryImg from "./assets/duel-parry.png";
+import blockImg from "./assets/duel-block.png";
+
 type ServerMessage = any;
 
 export default function App() {
@@ -11,32 +19,164 @@ export default function App() {
   const [phase, setPhase] = useState<string>("WAITING");
   const [yourIndex, setYourIndex] = useState<number | null>(null);
   const [status, setStatus] = useState<string>("");
-  const [log, setLog] = useState<string[]>([]);
+  const [log, setLog] = useState<LogEntry[]>([]);
   const [rooms, setRooms] = useState<string[]>([]);
   const [disabledActions, setDisabledActions] = useState<string[]>([]);
 
-  const buildLogEntry = (actorIndex: number, resolutionType: string, action: string, reaction: string, attackerDamage: number, defenderDamage: number): string => {
-    let logEntry = "";
-    const reactorIndex = actorIndex == 0 ? 2 : 1;
+  type LogEntry = {
+    textParts: (string | { kind: "action" | "reaction"; value: string })[];
+  };
+
+  const buildLogEntry = (
+    actorIndex: number,
+    resolutionType: string,
+    action: string,
+    reaction: string,
+    attackerDamage: number,
+    defenderDamage: number
+  ): LogEntry => {
+    const reactorIndex = actorIndex == 1 ? 2 : 1;
+
     switch (resolutionType) {
       case "win":
-        logEntry = `Player ${actorIndex}'s ${action} Beat Player ${reactorIndex}'s ${reaction} - player ${actorIndex}: ${attackerDamage} damage, player ${reactorIndex}: ${defenderDamage} damage`;
-        break;
+        return {
+          textParts: [
+            `Player ${actorIndex}'s `,
+            { kind: "action", value: action },
+            " beat Player ",
+            `${reactorIndex}'s `,
+            { kind: "reaction", value: reaction },
+            ` - player ${actorIndex}: ${attackerDamage} damage, player ${reactorIndex}: ${defenderDamage} damage`
+          ],
+        };
       case "lose":
-        logEntry = `Player ${actorIndex}'s ${action} Lost to Player ${reactorIndex}'s ${reaction} - player ${actorIndex}: ${attackerDamage} damage, player ${reactorIndex}: ${defenderDamage} damage`;
-        break;
+        return {
+          textParts: [
+            `Player ${actorIndex}'s `,
+            { kind: "action", value: action },
+            " lost to Player ",
+            `${reactorIndex}'s `,
+            { kind: "reaction", value: reaction },
+            ` - player ${actorIndex}: ${attackerDamage} damage, player ${reactorIndex}: ${defenderDamage} damage`
+          ],
+        };
       case "draw":
-        logEntry = `Player ${actorIndex}'s ${action} traded with Player ${reactorIndex}'s ${reaction} - player ${actorIndex}: ${attackerDamage} damage, player ${reactorIndex}: ${defenderDamage} damage`;
-        break;
+        return {
+          textParts: [
+            `Player ${actorIndex}'s `,
+            { kind: "action", value: action },
+            " traded with Player ",
+            `${reactorIndex}'s `,
+            { kind: "reaction", value: reaction },
+            ` - player ${actorIndex}: ${attackerDamage} damage, player ${reactorIndex}: ${defenderDamage} damage`
+          ],
+        };
       case "defend":
-        logEntry = `Player ${reactorIndex}'s ${reaction} defended Player ${actorIndex}'s ${action} - player ${reactorIndex}: ${defenderDamage} damage`;
-        break;
+        return {
+          textParts: [
+            `Player ${reactorIndex}'s `,
+            { kind: "reaction", value: reaction },
+            " defended Player ",
+            `${actorIndex}'s `,
+            { kind: "action", value: action },
+            ` - player ${reactorIndex}: ${defenderDamage} damage`
+          ],
+        };
       case "disable":
-        logEntry = `Player ${reactorIndex}'s ${reaction} disabled Player ${actorIndex}'s ${action} - player ${actorIndex} cannot use ${action} until the end of their next turn, player ${reactorIndex}: ${defenderDamage} damage`;
-        break;
+        return {
+          textParts: [
+            `Player ${reactorIndex}'s `,
+            { kind: "reaction", value: reaction },
+            " disabled Player ",
+            `${actorIndex}'s `,
+            { kind: "action", value: action },
+            ` - player ${actorIndex} cannot use`,
+            { kind: "action", value: action },
+            `until the end of their next turn, player ${reactorIndex}: ${defenderDamage} damage`
+          ],
+        }
     }
-    return logEntry;
+
+    return { textParts: [] };
+  };
+
+  const actionImages: Record<string, string> = {
+    slash: slashImg,
+    stab: stabImg,
+    strike: strikeImg,
+  };
+
+  const reactionImages: Record<string, string> = {
+    slash: slashImg,
+    stab: stabImg,
+    strike: strikeImg,
+    dodge: dodgeImg,
+    parry: parryImg,
+    block: blockImg,
+  };
+
+  const OFFENSIVE_MOVES = [
+    { type: "SLASH", img: slashImg },
+    { type: "STAB", img: stabImg },
+    { type: "STRIKE", img: strikeImg },
+  ] as const;
+
+  const DEFENSIVE_MOVES = [
+    { type: "DODGE", img: dodgeImg },
+    { type: "PARRY", img: parryImg },
+    { type: "BLOCK", img: blockImg },
+  ] as const;
+
+  function MoveButton({
+    move,
+    onClick,
+    disabled,
+    disabledCount,
+    status,
+  }: {
+    move: { type: string; img: string };
+    onClick: () => void;
+    disabled?: boolean;
+    disabledCount?: number;
+    status?: string;
+  }) {
+    return (
+      <button onClick={onClick} disabled={disabled} className={status}>
+        <img
+          src={move.img}
+          alt={move.type}
+          className={`icon ${status ? `icon--${status}` : ""}`}
+        />
+        {disabledCount != null && disabledCount > 0 && disabledCount}
+      </button>
+    );
   }
+
+
+  function RenderLog({ entry }: { entry: LogEntry }) {
+    return (
+      <span>
+        {entry.textParts.map((part, i) => {
+          if (typeof part === "string") return part;
+
+          const src =
+            part.kind === "action"
+              ? actionImages[part.value.toLowerCase()]
+              : reactionImages[part.value.toLowerCase()];
+
+          return (
+            <img
+              key={i}
+              src={src}
+              alt={part.value}
+              className="small-icon"
+            />
+          );
+        })}
+      </span>
+    );
+  }
+
 
 
   useEffect(() => {
@@ -104,7 +244,18 @@ export default function App() {
   return (
     <>
       <div style={{ padding: 20 }}>
-        <h1>Duel MVP</h1>
+        <h1 style={{ textAlign: "center" }}>Duel MVP</h1>
+        <div className="action-triangle">
+          <img src={slashImg} alt="slash" className="icon" /> <span>{" > "}</span>
+          <img src={stabImg} alt="stab" className="icon" /> <span>{" > "}</span>
+          <img src={strikeImg} alt="strike" className="icon" />
+          <span>^</span> <span></span>
+          <span>^</span> <span></span>
+          <span>^</span>
+          <img src={dodgeImg} alt="dodge" className="icon" /> <span></span>
+          <img src={parryImg} alt="parry" className="icon" /> <span></span>
+          <img src={blockImg} alt="block" className="icon" />
+        </div>
 
         {!connected && <p>Connecting…</p>}
 
@@ -229,71 +380,127 @@ export default function App() {
           </p>
         )}
 
-        <div>
-          {disabledActions.length > 0 && <p>Disabled Actions:</p>}
-          {disabledActions.map((disabledAction, index) => (
-            <p key={index}>{disabledAction}</p>
-          ))}
-        </div>
-
         {phase === "AWAIT_REACTION" && !yourTurn && (
           <>
-            <p>Choose your reaction:</p>
             <p>Offensive:</p>
             <div style={{ display: "flex", gap: "32px" }}>
-              <button onClick={() => send({ type: "REACTION", reaction: "SLASH" })}
-                disabled={disabledActions.includes("SLASH")}>
-                SLASH {disabledActions.includes("SLASH") && <>{countOccurrencesFilter(disabledActions, "SLASH")}</>}
-              </button>
-              <button onClick={() => send({ type: "REACTION", reaction: "STAB" })}
-                disabled={disabledActions.includes("STAB")}>
-                STAB {disabledActions.includes("STAB") && <>{countOccurrencesFilter(disabledActions, "STAB")}</>}
-              </button>
-              <button onClick={() => send({ type: "REACTION", reaction: "STRIKE" })}
-                disabled={disabledActions.includes("STRIKE")}>
-                STRIKE {disabledActions.includes("STRIKE") && <>{countOccurrencesFilter(disabledActions, "STRIKE")}</>}
-              </button>
+              {OFFENSIVE_MOVES.map((move) => (
+                <MoveButton
+                  key={move.type}
+                  move={move}
+                  onClick={() =>
+                    send({ type: "REACTION", reaction: move.type })
+                  }
+                  disabled={disabledActions.includes(move.type)}
+                  disabledCount={countOccurrencesFilter(
+                    disabledActions,
+                    move.type
+                  )}
+                  status={disabledActions.includes(move.type) ? "disabled" : ""}
+                />
+              ))}
             </div>
+
             <p>Defensive:</p>
             <div style={{ display: "flex", gap: "32px" }}>
-              <button onClick={() => send({ type: "REACTION", reaction: "DODGE" })}>
-                DODGE
-              </button>
-              <button onClick={() => send({ type: "REACTION", reaction: "PARRY" })}>
-                PARRY
-              </button>
-              <button onClick={() => send({ type: "REACTION", reaction: "BLOCK" })}>
-                Block
-              </button>
+              {DEFENSIVE_MOVES.map((move) => (
+                <MoveButton
+                  key={move.type}
+                  move={move}
+                  onClick={() =>
+                    send({ type: "REACTION", reaction: move.type })
+                  }
+                />
+              ))}
             </div>
           </>
         )}
-
-
 
         {phase === "AWAIT_ACTION" && yourTurn && (
           <>
-            <p>Choose your action:</p>
+            <p>Offensive:</p>
             <div style={{ display: "flex", gap: "32px" }}>
-              <button onClick={() => send({ type: "ACTION", action: "SLASH" })}
-                disabled={disabledActions.includes("SLASH")}>
-                SLASH {disabledActions.includes("SLASH") && <>{countOccurrencesFilter(disabledActions, "SLASH")}</>}
-              </button>
-              <button onClick={() => send({ type: "ACTION", action: "STAB" })}
-                disabled={disabledActions.includes("STAB")}>
-                STAB {disabledActions.includes("STAB") && <>{countOccurrencesFilter(disabledActions, "STAB")}</>}
-              </button>
-              <button onClick={() => send({ type: "ACTION", action: "STRIKE" })}
-                disabled={disabledActions.includes("STRIKE")}>
-                STRIKE {disabledActions.includes("STRIKE") && <>{countOccurrencesFilter(disabledActions, "STRIKE")}</>}
-              </button>
+              {OFFENSIVE_MOVES.map((move) => (
+                <MoveButton
+                  key={move.type}
+                  move={move}
+                  onClick={() =>
+                    send({ type: "ACTION", action: move.type })
+                  }
+                  disabled={disabledActions.includes(move.type)}
+                  disabledCount={countOccurrencesFilter(
+                    disabledActions,
+                    move.type
+                  )}
+                  status={disabledActions.includes(move.type) ? "disabled" : ""}
+                />
+              ))}
+            </div>
+
+            <p>Defensive:</p>
+            <div style={{ display: "flex", gap: "32px" }}>
+              {DEFENSIVE_MOVES.map((move) => (
+                <MoveButton
+                  key={move.type}
+                  move={move}
+                  onClick={() =>
+                    send({ type: "REACTION", reaction: move.type })
+                  }
+                  disabled={true}
+                  status={"stand-by"}
+                />
+              ))}
             </div>
           </>
         )}
+
+        {(
+          (phase === "AWAIT_REACTION" && yourTurn) ||
+          (phase === "AWAIT_ACTION" && !yourTurn)
+        ) && (
+            <>
+              <p>Offensive:</p>
+              <div style={{ display: "flex", gap: "32px" }}>
+                {OFFENSIVE_MOVES.map((move) => (
+                  <MoveButton
+                    key={move.type}
+                    move={move}
+                    onClick={() =>
+                      send({ type: "ACTION", action: move.type })
+                    }
+                    disabled={true}
+                    disabledCount={countOccurrencesFilter(
+                      disabledActions,
+                      move.type
+                    )}
+                    status={disabledActions.includes(move.type) ? "disabled" : "stand-by"}
+                  />
+                ))}
+              </div>
+
+              <p>Defensive:</p>
+              <div style={{ display: "flex", gap: "32px" }}>
+                {DEFENSIVE_MOVES.map((move) => (
+                  <MoveButton
+                    key={move.type}
+                    move={move}
+                    onClick={() =>
+                      send({ type: "REACTION", reaction: move.type })
+                    }
+                    disabled={true}
+                    status={"stand-by"}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
         <div>
-          {log.length > 0 && <p>LOG:</p>}
-          {log.map((logItem, index) => (
-            <p key={index}>{logItem}</p>
+          {log.length > 0 && <p>Turn history:</p>}
+          {log.map((entry, index) => (
+            <div key={index} style={{ display: "flex", alignItems: "start", gap: "4px", marginBottom: " 4px" }}>
+              <span>{index}- </span> <RenderLog entry={entry} />
+            </div>
           ))}
         </div>
       </div>
