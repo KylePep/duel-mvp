@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { connect, send, subscribe } from "./ws";
+import Modal from "./Modal";
 
 import './App.css';
 import slashImg from "./assets/duel-slash.png";
@@ -22,6 +23,8 @@ export default function App() {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [rooms, setRooms] = useState<string[]>([]);
   const [disabledActions, setDisabledActions] = useState<string[]>([]);
+  const [showModal, setShowModal] = useState(false);
+
 
   type LogEntry = {
     textParts: (string | { kind: "action" | "reaction"; value: string })[];
@@ -218,6 +221,7 @@ export default function App() {
           setHp(msg.hp);
           setDisabledActions(msg.disabledActions[msg.yourIndex]);
           setLog(prevLogs => [buildLogEntry(msg.actorIndex + 1, msg.resolutionType, msg.action.type, msg.reaction.type, msg.attackerDamage, msg.defenderDamage), ...prevLogs]);
+          setShowModal(true);
           break;
 
         case "GAME_OVER":
@@ -503,6 +507,15 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        <Modal
+          open={showModal}
+          onClose={() => setShowModal(false)}
+          autoCloseMs={2500}
+        >
+          <h3>Turn Resolved</h3>
+          <RenderLog entry={log[0]} />
+        </Modal>
       </div>
     </>
   );
